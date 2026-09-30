@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build Timetable · PriorityPlanners</title>
+<style>
+:root{
+  --bg:#070706;--surface:#11100e;--surface2:#171511;--border:#302d25;
+  --ink:#f0ebda;--mute:#9a957d;--accent:#d7a72f;--ok:#34d399;--err:#ff5a5f;
+  --sans:Inter,Segoe UI,Arial,sans-serif
+}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#17150e 0,#070706 45%,#040404 100%);color:var(--ink);font-family:var(--sans);min-height:100vh}
+.wrap{padding:28px;max-width:1180px;margin:0 auto}
+.card{background:rgba(17,16,14,.96);border:1px solid var(--border);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.4);padding:24px}
+h1{margin:0;font-size:28px}.sub{margin:7px 0 0;color:var(--mute);font-size:13px;line-height:1.5}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.badge{border:1px solid #355444;color:var(--ok);background:#0d1d16;border-radius:999px;padding:7px 11px;font-size:12px;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field label,.section h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+input,select{width:100%;height:42px;background:#090908;color:var(--ink);border:1px solid var(--border);border-radius:9px;padding:0 11px;outline:none}input:focus,select:focus{border-color:#8d7227;box-shadow:0 0 0 2px rgba(215,167,47,.12)}
+.days{display:flex;flex-wrap:wrap;gap:8px}.day{display:flex;align-items:center;gap:7px;padding:9px 11px;background:#0c0c0a;border:1px solid var(--border);border-radius:9px;font-size:13px}.day input{width:auto;height:auto}
+.section{margin-top:22px;padding-top:20px;border-top:1px solid var(--border)}.section h2{margin:0 0 11px;font-size:12px}
+.req-head,.req-row{display:grid;grid-template-columns:1.15fr 1.55fr 1.55fr .75fr .8fr .65fr;gap:8px;align-items:center}.req-head{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:0 2px 6px}.req-row{margin-bottom:8px}.req-row .remove{height:38px;border:1px solid #4c2929;background:#1d0f0f;color:#ff8a8a;border-radius:9px;cursor:pointer}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btn{height:40px;padding:0 14px;border-radius:9px;border:1px solid var(--border);background:#17150f;color:var(--ink);cursor:pointer;font-weight:700}.btn.primary{background:#8f731b;border-color:#a88722}.btn.sec{background:#0c0c0a}.btn.danger{background:#2b1111;border-color:#603030;color:#ffb1b1}.btn:disabled{opacity:.55;cursor:not-allowed}
+.fac-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.fac-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:10px;background:#0b0b09}.fac-name{font-size:13px}.fac-limit{font-size:12px;color:var(--mute)}
+.actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px}.status{font-size:13px;line-height:1.45;min-height:20px}.status.ok{color:var(--ok)}.status.err{color:var(--err)}.status.info{color:#c9c3ab}
+.note{margin-top:10px;color:var(--mute);font-size:12px;line-height:1.5}.empty{padding:14px;border:1px dashed var(--border);border-radius:10px;color:var(--mute);font-size:13px}.loading{opacity:.7}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.req-head{display:none}.req-row{grid-template-columns:1fr 1fr}.fac-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.wrap{padding:14px}.grid{grid-template-columns:1fr}.req-row{grid-template-columns:1fr}.top{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="top">
+      <div>
+        <h1>Build a new timetable</h1>
+        <p class="sub">Fill the timetable requirements once. PriorityPlanners will validate the rules, save them to Supabase PostgreSQL, and generate the new timetable.</p>
+      </div>
+      <div class="badge" id="dbStatus">Connected to backend</div>
+    </div>
+
+    <div class="grid">
+      <div class="field"><label>College start</label><input id="collegeStart" type="time" value="09:00"></div>
+      <div class="field"><label>College end</label><input id="collegeEnd" type="time" value="16:00"></div>
+      <div class="field"><label>Recess start</label><input id="recessStart" type="time" value="13:00"></div>
+      <div class="field"><label>Recess end</label><input id="recessEnd" type="time" value="14:00"></div>
+    </div>
+
+    <div class="section">
+      <h2>Working days</h2>
+      <div class="days" id="days"></div>
+      <div class="note">Monday to Friday is selected by default. Saturday can be enabled when your college uses it.</div>
+    </div>
+
+    <div class="section">
+      <h2>Batch / subject / faculty requirements</h2>
+      <div class="req-head"><div>Batch</div><div>Subject</div><div>Faculty</div><div>Per week</div><div>Duration</div><div>Max/day</div></div>
+      <div id="requirements"></div>
+      <div class="toolbar">
+        <button class="btn sec" id="addRequirement" type="button">+ Add requirement</button>
+        <button class="btn sec" id="loadDemo" type="button">Load demo requirements</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Maximum faculty lectures per day</h2>
+      <div class="fac-grid" id="facultyLimits"></div>
+    </div>
+
+    <div class="actions">
+      <div class="status info" id="status"></div>
+      <div class="toolbar">
+        <button class="btn sec" id="cancel" type="button">Cancel</button>
+        <button class="btn primary" id="generate" type="button">Generate timetable</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const API = window.location.origin;
+  const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  let batches = [], subjects = [], faculty = [], mappings = [];
+  let savedRequirements = [], savedConfig = null;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+  const setStatus = (message, type = "info") => {
+    $("status").textContent = message || "";
+    $("status").className = "status " + type;
+  };
+  const json = async (path, options = {}) => {
+    const res = await fetch(API + path, {headers:{"Content-Type":"application/json", ...(options.headers || {})}, ...options});
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!res.ok) throw new Error(data?.detail || data?.message || `Backend request failed (${res.status})`);
+    return data;
+  };
+
+  function optionList(items, valueKey, textKey, selected = null) {
+    return items.map(item => `<option value="${item[valueKey]}" ${String(item[valueKey])===String(selected)?"selected":""}>${esc(item[textKey])}</option>`).join("");
+  }
+
+  function renderDays() {
+    const selected = new Set((savedConfig?.working_days || ["Monday","Tuesday","Wednesday","Thursday","Friday"]));
+    $("days").innerHTML = DAYS.map(day => `<label class="day"><input type="checkbox" value="${day}" ${selected.has(day)?"checked":""}>${day}</label>`).join("");
+  }
+
+  function mappedFaculty(subjectId) {
+    const ids = new Set(mappings.filter(m => Number(m.subject_id) === Number(subjectId)).map(m => Number(m.faculty_id)));
+    return faculty.filter(f => ids.has(Number(f.id)));
+  }
+
+  function renderFacultySelect(selected, subjectId) {
+    const mapped = mappedFaculty(subjectId);
+    const list = mapped.length ? mapped : faculty;
+    return optionList(list, "id", "name", selected ?? list[0]?.id ?? "");
+  }
+
+  function addRequirement(row = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "req-row";
+    const subjectId = row.subject_id ?? subjects[0]?.id ?? "";
+    wrap.innerHTML = `
+      <select data-field="batch">${optionList(batches,"id","name",row.batch_id)}</select>
+      <select data-field="subject">${optionList(subjects,"id","name",subjectId)}</select>
+      <select data-field="faculty">${renderFacultySelect(row.faculty_id, subjectId)}</select>
+      <input data-field="lectures" type="number" min="1" max="50" value="${Number(row.lectures_per_week||3)}">
+      <select data-field="duration">
+        <option value="30" ${Number(row.duration_minutes||60)===30?"selected":""}>30 min</option>
+        <option value="60" ${Number(row.duration_minutes||60)===60?"selected":""}>60 min</option>
+        <option value="90" ${Number(row.duration_minutes||60)===90?"selected":""}>90 min</option>
+        <option value="120" ${Number(row.duration_minutes||60)===120?"selected":""}>120 min</option>
+        <option value="180" ${Number(row.duration_minutes||60)===180?"selected":""}>180 min</option>
+        <option value="240" ${Number(row.duration_minutes||60)===240?"selected":""}>240 min</option>
+      </select>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input data-field="maxPerDay" type="number" min="1" max="10" value="${Number(row.max_per_day||1)}">
+        <button class="remove" title="Remove requirement" type="button">×</button>
+      </div>`;
+
+    wrap.querySelector("[data-field=subject]").addEventListener("change", e => {
+      const subject = subjects.find(s => Number(s.id) === Number(e.target.value));
+      const current = wrap.querySelector("[data-field=faculty]").value;
+      wrap.querySelector("[data-field=faculty]").innerHTML = renderFacultySelect(current, subject?.id || e.target.value);
+      const practical = !!subject?.is_practical;
+      const duration = wrap.querySelector("[data-field=duration]");
+      if (practical && Number(duration.value) === 60) duration.value = "120";
+    });
+    wrap.querySelector(".remove").addEventListener("click", () => wrap.remove());
+    $("requirements").appendChild(wrap);
+  }
+
+  function clearRequirements() { $("requirements").innerHTML = ""; }
+
+  function collectRequirements() {
+    return [...$("requirements").querySelectorAll(".req-row")].map(row => ({
+      batch_id: Number(row.querySelector("[data-field=batch]").value),
+      subject_id: Number(row.querySelector("[data-field=subject]").value),
+      faculty_id: Number(row.querySelector("[data-field=faculty]").value),
+      lectures_per_week: Number(row.querySelector("[data-field=lectures]").value),
+      duration_minutes: Number(row.querySelector("[data-field=duration]").value),
+      max_per_day: Number(row.querySelector("[data-field=maxPerDay]").value),
+    })).filter(r => r.batch_id && r.subject_id && r.faculty_id);
+  }
+
+  function validateClient(requirements, days) {
+    if (!days.length) return "Select at least one working day.";
+    if (!requirements.length) return "Add at least one timetable requirement.";
+    const duplicates = new Set();
+    for (const r of requirements) {
+      if (!Number.isInteger(r.lectures_per_week) || r.lectures_per_week < 1) return "Lectures per week must be at least 1.";
+      if (!Number.isInteger(r.max_per_day) || r.max_per_day < 1) return "Maximum classes per day must be at least 1.";
+      const key = `${r.batch_id}|${r.subject_id}`;
+      if (duplicates.has(key)) return "The same batch + subject is listed more than once. Combine it into one requirement.";
+      duplicates.add(key);
+    }
+    return null;
+  }
+
+  function demoRows() {
+    const findBatch = n => batches.find(x => x.name === n)?.id;
+    const findSubject = n => subjects.find(x => x.name === n)?.id;
+    const findFaculty = n => faculty.find(x => x.name === n)?.id;
+    const definitions = [
+      ["CSE-3A","Mathematics","Dr. Rajesh Kumar",4,60,1],
+      ["CSE-3A","Data Structures","Dr. Priya Sharma",4,60,1],
+      ["CSE-3A","Database Management","Dr. Amit Singh",3,60,1],
+      ["CSE-3A","Operating Systems","Dr. Neha Verma",3,60,1],
+      ["CSE-3A","Data Structures Lab","Dr. Priya Sharma",1,120,1],
+      ["CSE-3B","Mathematics","Dr. Rajesh Kumar",4,60,1],
+      ["CSE-3B","Computer Networks","Dr. Rahul Gupta",3,60,1],
+      ["CSE-3B","Web Development","Dr. Anjali Mehta",3,60,1],
+      ["CSE-3B","Web Development Lab","Dr. Anjali Mehta",1,120,1],
+    ];
+    const rows = definitions.map(([b,s,f,l,d,m]) => ({batch_id:findBatch(b),subject_id:findSubject(s),faculty_id:findFaculty(f),lectures_per_week:l,duration_minutes:d,max_per_day:m}));
+    return rows.filter(r => r.batch_id && r.subject_id && r.faculty_id);
+  }
+
+  function renderFacultyLimits() {
+    const saved = savedConfig?.faculty_daily_limits || {};
+    $("facultyLimits").innerHTML = faculty.length ? faculty.map(f => `
+      <div class="fac-row"><div><div class="fac-name">${esc(f.name)}</div><div class="fac-limit">Maximum scheduled time slots per day</div></div>
+      <input data-faculty-limit="${f.id}" type="number" min="1" max="12" value="${Number(saved[String(f.id)] || f.max_daily_lectures || 4)}">
+      </div>`).join("") : `<div class="empty">No faculty found. Use Load demo data from the admin data manager first.</div>`;
+  }
+
+  async function load() {
+    setStatus("Loading faculty, rooms, subjects, batches and saved requirements…");
+    $("dbStatus").textContent = "Loading backend…";
+    try {
+      [batches, subjects, faculty, mappings, savedRequirements, savedConfig] = await Promise.all([
+        json("/batches/"), json("/subjects/"), json("/faculty/"), json("/faculty-subjects/"), json("/timetable/requirements"), json("/timetable/configuration")
+      ]);
+      if (!batches.length || !subjects.length || !faculty.length) {
+        setStatus("Some master data is missing. You can still load demo data from the admin workspace, then reopen this window.", "err");
+      }
+      renderDays();
+      $("collegeStart").value = savedConfig?.college_start || "09:00";
+      $("collegeEnd").value = savedConfig?.college_end || "16:00";
+      $("recessStart").value = savedConfig?.recess_start || "13:00";
+      $("recessEnd").value = savedConfig?.recess_end || "14:00";
+      clearRequirements();
+      const rows = savedRequirements.length ? savedRequirements : [];
+      rows.forEach(addRequirement);
+      if (!rows.length) addRequirement();
+      renderFacultyLimits();
+      $("dbStatus").textContent = "Connected to PostgreSQL";
+      if (savedRequirements.length) setStatus(`Loaded ${savedRequirements.length} saved requirement${savedRequirements.length===1?"":"s"}. You can edit them before generating.`, "ok");
+      else setStatus("Fill the requirements, then click Generate timetable.");
+    } catch (error) {
+      $("dbStatus").textContent = "Backend error";
+      setStatus(error.message || "Could not load backend data.", "err");
+    }
+  }
+
+  async function loadDemoData() {
+    setStatus("Loading demo data into PostgreSQL…");
+    try {
+      await json("/demo/seed", {method:"POST"});
+      await load();
+      const rows = demoRows();
+      if (rows.length) {
+        clearRequirements();
+        rows.forEach(addRequirement);
+        setStatus("Demo requirements loaded. Review them and click Generate timetable.", "ok");
+      }
+    } catch (error) {
+      setStatus(error.message || "Could not load demo data.", "err");
+    }
+  }
+
+  async function generate() {
+    const requirements = collectRequirements();
+    const days = [...$("days").querySelectorAll("input:checked")].map(x => x.value);
+    const error = validateClient(requirements, days);
+    if (error) return setStatus(error, "err");
+
+    const limits = {};
+    $("facultyLimits").querySelectorAll("[data-faculty-limit]").forEach(input => {
+      limits[input.dataset.facultyLimit] = Math.max(1, Math.min(12, Number(input.value) || 1));
+    });
+
+    const body = {
+      working_days: days,
+      college_start: $("collegeStart").value,
+      college_end: $("collegeEnd").value,
+      recess_start: $("recessStart").value || null,
+      recess_end: $("recessEnd").value || null,
+      slot_minutes: 60,
+      requirements,
+      faculty_daily_limits: limits,
+    };
+
+    $("generate").disabled = true;
+    $("cancel").disabled = true;
+    setStatus("Validating requirements and generating the timetable…");
+    try {
+      const result = await json("/timetable/generate-configured", {method:"POST", body:JSON.stringify(body)});
+      setStatus(result.message || "Timetable generated successfully.", "ok");
+      setTimeout(() => {
+        try { window.parent.postMessage({type:"PP_TIMETABLE_GENERATED", result}, "*"); } catch {}
+      }, 500);
+    } catch (error) {
+      setStatus(error.message || "Timetable generation failed.", "err");
+      $("generate").disabled = false;
+      $("cancel").disabled = false;
+    }
+  }
+
+  $("addRequirement").addEventListener("click", () => addRequirement());
+  $("loadDemo").addEventListener("click", loadDemoData);
+  $("generate").addEventListener("click", generate);
+  $("cancel").addEventListener("click", () => {
+    try { window.parent.postMessage({type:"PP_TIMETABLE_BUILDER_CLOSE"}, "*"); } catch { window.close(); }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
